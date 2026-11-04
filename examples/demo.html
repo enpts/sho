@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sho.js demo</title>
+<style>
+  :root {
+    --bg: #1d1c1a; --panel: #262522; --line: #3a3834; --text: #e9e4d8; --muted: #9b9588;
+    --accent: #c8553d; --accent2: #d9a441; --paper-shadow: rgba(0,0,0,.45); --top: 44px;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 13px/1.5 "Yu Gothic UI", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    display: grid; grid-template-columns: 290px 1fr 340px; grid-template-rows: var(--top) minmax(0, 1fr); height: 100vh; overflow: hidden;
+  }
+  header { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header a { color: var(--muted); text-decoration: none; }
+  header a:hover { color: var(--text); }
+  .head-right { display: flex; align-items: center; gap: 14px; }
+  .lang { display: flex; }
+  .lang button { padding: 2px 8px; font-size: 12px; color: var(--muted); border-radius: 0; }
+  .lang button:first-child { border-radius: 6px 0 0 6px; }
+  .lang button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+  .lang button[aria-pressed="true"] { color: var(--text); background: #4a4640; }
+  aside { background: var(--panel); overflow-y: auto; padding: 14px 16px 24px; }
+  aside.params { border-right: 1px solid var(--line); }
+  aside.data { border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+  h1 { font-size: 16px; margin: 0; letter-spacing: .05em; }
+  h2 { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; margin: 18px 0 8px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+  aside.data h2 { margin: 8px 0 0; }
+  aside.params h2:first-child { margin-top: 0; }
+  .ctl { margin: 8px 0 10px; }
+  .ctl .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; cursor: default; }
+  .ctl .row span:first-child { user-select: none; }
+  .ctl .val { font-variant-numeric: tabular-nums; color: var(--accent2); }
+  .hint { color: var(--muted); font-size: 11px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); margin: 2px 0 0; }
+  label.chk { display: flex; align-items: center; gap: 6px; margin: 6px 0; cursor: pointer; }
+  input[type=checkbox] { accent-color: var(--accent); }
+  .buttons { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  button, select {
+    font: inherit; color: var(--text); background: #33312d; border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 8px; cursor: pointer;
+  }
+  button:hover { background: #3d3a35; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { background: #d6634a; }
+  select { width: 100%; }
+  #sign { font: inherit; color: var(--text); background: #1a1917; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; }
+  #src {
+    flex: 1 1 auto; min-height: 200px; width: 100%; resize: none; background: #1a1917; color: #d8d2c4;
+    border: 1px solid var(--line); border-radius: 6px; padding: 8px;
+    font: 11.5px/1.45 Consolas, "Cascadia Mono", monospace; white-space: pre; overflow: auto;
+  }
+  .msg { font-size: 12px; color: var(--muted); min-height: 1.5em; }
+  .msg.err { color: #ef8a73; }
+  #workComment { margin: 0; padding: 8px 10px; border-left: 3px solid var(--accent2); background: #1f1e1b; border-radius: 0 6px 6px 0; line-height: 1.6; white-space: pre-wrap; }
+  #workComment::before { content: attr(data-label); display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+
+  main { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; min-width: 0; }
+  .stage {
+    position: relative; flex: none; /* 大きさは fitStage が紙の縦横比に合わせて決める */
+    box-shadow: 0 10px 40px var(--paper-shadow); background: #f2ebdc;
+  }
+  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #overlay { pointer-events: none; }
+  .legend { font-size: 11px; color: var(--muted); line-height: 1.6; }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: -1px; margin-right: 3px; }
+
+  @media (max-width: 1100px) {
+    body { grid-template-columns: 1fr; grid-template-rows: var(--top) auto auto auto; height: auto; overflow: auto; }
+    header { order: -2; }
+    main { order: -1; }
+    #src { height: 300px; flex: none; }
+  }
+</style>
+
+<header>
+  <h1>sho.js</h1>
+  <div class="head-right">
+    <div class="lang" role="group" aria-label="Language">
+      <button id="lang-en" lang="en">English</button>
+      <button id="lang-ja" lang="ja">日本語</button>
+    </div>
+    <a href="https://github.com/enpts/sho/">GitHub</a>
+  </div>
+</header>
+
+<aside class="params">
+  <h2 data-t="hPlay"></h2>
+  <div class="buttons">
+    <button id="play" class="primary" data-t="play"></button>
+    <button id="pause"></button>
+    <button id="step" data-t="step"></button>
+    <button id="instant" data-t="instant"></button>
+    <button id="clearPaper" data-t="clear"></button>
+    <button id="png" data-t="png"></button>
+  </div>
+  <div class="msg" id="mode"></div>
+  <div id="g-play"></div>
+  <label class="chk"><input type="checkbox" id="sound" checked> <span data-t="sound"></span></label>
+  <label class="chk"><input type="checkbox" id="showPts"> <span data-t="showPts"></span></label>
+  <label class="chk"><input type="checkbox" id="showAll"> <span data-t="showAll"></span></label>
+  <div class="legend">
+    <i style="background:#c8553d"></i><span data-t="legend1"></span><br>
+    <span data-t="legend2"></span>
+  </div>
+
+  <h2><span data-t="hBrush"></span> <span class="hint" data-t="hBrushHint"></span></h2>
+  <div class="ctl">
+    <div class="row"><span data-t="bleed"></span></div>
+    <select id="bleed"><option value="capillary" data-t="capillary"></option><option value="ring" data-t="ring"></option></select>
+  </div>
+  <div id="g-brush"></div>
+  <div class="ctl">
+    <div class="row"><span data-t="autoDip"></span></div>
+    <select id="autoDip"><option value="char" data-t="dipChar"></option><option value="stroke" data-t="dipStroke"></option><option value="dry" data-t="dipDry"></option><option value="false" data-t="dipOff"></option></select>
+  </div>
+  <div id="g-dip"></div>
+  <h2><span data-t="hData"></span> <span class="hint" data-t="hDataHint"></span></h2>
+  <div id="g-data"></div>
+
+  <h2 data-t="hPaper"></h2>
+  <div class="ctl">
+    <div class="row"><span data-t="paperKind"></span></div>
+    <select id="paperKind"><option value="image" data-t="paperImage"></option><option value="plain" data-t="paperPlain"></option></select>
+  </div>
+  <div class="ctl">
+    <div class="row"><span data-t="paperColor"></span><input id="paperColor" type="color" value="#f2ebdc" disabled></div>
+  </div>
+  <div id="g-paper"></div>
+
+  <h2 data-t="hView"></h2>
+  <div class="ctl">
+    <div class="row"><span data-t="sign"></span></div>
+    <input id="sign" type="text" value="">
+  </div>
+  <div id="g-view"></div>
+  <p><button id="reset" style="width:100%" data-t="reset"></button></p>
+  <p class="hint" data-t="resetHint"></p>
+</aside>
+
+<main>
+  <div class="stage">
+    <canvas id="paper"></canvas>
+    <canvas id="overlay" width="2000" height="2752"></canvas>
+  </div>
+</main>
+
+<aside class="data">
+  <h2 data-t="hPreset"></h2>
+  <select id="preset"></select>
+  <h2 data-t="hSource"></h2>
+  <textarea id="src" spellcheck="false"></textarea>
+  <div class="msg" id="msg"></div>
+  <blockquote id="workComment" hidden></blockquote>
+</aside>
+
+<script src="../sho.js"></script>
+<script>
+'use strict';
+
+// ---------- 表示の言語（既定は英語。選んだ言語はこの閲覧者のブラウザに残す） ----------
+const MSG = {
+  hPlay: ['Playback', '再生'],
+  play: ['▶ Play', '▶ 再生'],
+  pause: ['❚❚ Pause', '❚❚ 一時停止'],
+  resume: ['▶ Resume', '▶ 再開'],
+  step: ['One stroke', '1画ずつ'],
+  instant: ['Draw instantly', '即時描画'],
+  clear: ['Clear', 'クリア'],
+  png: ['Save PNG', 'PNG を保存'],
+  sound: ['Sound', '音を出す'],
+  showPts: ['Show control points and brush direction', '制御点と筆の向きを表示'],
+  showAll: ['Show control points for all strokes', '全画の制御点を表示'],
+  legend1: ['Brush tip (point). Line = belly direction and length (pressure × size)', '穂先（点） 線＝腹の向きと長さ（筆圧×太さ）'],
+  legend2: ['□ = corner "k"　◯ = pause　Number = point index', '□＝転折 "k"　◯＝溜め　数字＝点の番号'],
+  hBrush: ['Brush and ink', '筆と墨'],
+  hBrushHint: ['(redraws on change)', '（変更で再描画）'],
+  bleed: ['Pale ink bleed [bleed]', '淡墨のにじみ方 [bleed]'],
+  capillary: ['Capillary (radial)', '毛細管（放射状）'],
+  ring: ['Ring (with a darker rim)', '帯（水際あり）'],
+  autoDip: ['Automatic reload [autoDip]', '自動の墨継ぎ [autoDip]'],
+  dipChar: ['Each character (char)', '字ごと (char)'],
+  dipStroke: ['Each stroke (stroke)', '画ごと (stroke)'],
+  dipDry: ['When the ink runs out (dry)', '墨が切れたとき (dry)'],
+  dipOff: ['Off (false)', 'しない (false)'],
+  hData: ['Data adjustment', 'データ補正'],
+  hDataHint: ['(applies to every point)', '（全点に掛ける）'],
+  hPaper: ['Paper', '紙'],
+  paperKind: ['Paper type [paper]', '紙の種類 [paper]'],
+  paperImage: ['Washi image (paper.webp)', '和紙の画像（paper.webp）'],
+  paperPlain: ['Plain', '無地'],
+  paperColor: ['Plain color [paperColor]', '無地の色 [paperColor]'],
+  hView: ['Display', '表示'],
+  sign: ['Signature (bottom left, blank for none)', '署名（左下・空欄で無し）'],
+  reset: ['Reset parameters', 'パラメータを既定に戻す'],
+  resetHint: ["Double-click a slider's label to reset just that value.", 'スライダーのラベルをダブルクリックで、その値だけ既定に戻ります。'],
+  resetTitle: ['Double-click to reset', 'ダブルクリックで既定値'],
+  hPreset: ['Preset', 'プリセット'],
+  hSource: ['Data (JSON Lines / JSON array)', 'データ（JSON Lines / JSON 配列）'],
+  comment: ["The work's comment", '作品のひとこと'],
+  cpsUnit: ['{0} chars/s', '{0} 字/s'],
+  cpsAll: ['All at once', '一括'],
+  asDeclared: ['As declared', '宣言どおり'],
+  toneDark: [' (dark)', '（濃墨）'],
+  tonePale: [' (pale)', '（淡墨）'],
+  off: [' (off)', '（無し）'],
+  badArray: ['Cannot read as a JSON array: {0}', 'JSON 配列として読めません: {0}'],
+  badLine: ['Unreadable line: {0}', '読めない行: {0}'],
+  count: ['{0} commands ({1} strokes)', '{0} コマンド（画 {1}）'],
+  problems: ['; {0} problem(s): {1}', '・読めない行など {0} 件: {1}'],
+  mInstant: ['Drawn instantly ({0} ms)', '即時描画（{0} ms）'],
+  mPlaying: ['Playing', '再生中'],
+  mDone: ['Done', '完了'],
+  mPaused: ['Paused', '一時停止'],
+  mCleared: ['Cleared', 'クリア'],
+  mStep: ['One stroke at a time', '1画ずつ'],
+  mStepDone: ['One stroke at a time (done)', '1画ずつ（完了）'],
+  mStepWait: ['One stroke at a time (waiting)', '1画ずつ（待機）'],
+};
+let lang = 'en';
+try { if (localStorage.getItem('sho-demo-lang') === 'ja') lang = 'ja'; } catch (e) { /* 既定のまま */ }
+const pick = (pair) => pair[lang === 'ja' ? 1 : 0];
+const tr = (key, ...args) => pick(MSG[key]).replace(/\{(\d)\}/g, (_, i) => args[i]);
+
+// ---------- プリセット（prompt.md の技法の例） ----------
+const EX = (p) => '{"t":"brush","size":58}\n{"c":"例"}\n' + p;
+const PRESETS = [
+  [['Yong 永: the eight principles (regular script)', '「永」永字八法（楷書）'], `{"t":"brush","size":58}
+{"c":"永"}
+{"p":[[377,327,0.06,null,0.8],[418,352,1],[434,376,2.0,null,0.3,0.12],[430,372,0.06,null,0.4]]}
+{"p":[[311,528,0.1,null,0.5],[317,534,1.1,null,0.4],[369,528,0.9],[434,504,0.9,null,0.6],[467,487,1.44,null,0.3,0.14,"k"],[475,540,1.1,null,0.4],[467,622,1.1],[467,909,1],[459,941,1.4,70,0.3,0.12],[451,941,1.5,null,0.5],[385,900,0.4,null,5]]}
+{"p":[[213,696,0.1,null,0.5],[219,702,1.1,null,0.4],[270,696,0.9],[344,672,0.9,null,0.6],[369,663,1.36,null,0.3,0.1,"k"],[369,704,1,60,0.45],[320,786,1,75,1],[270,852,1.06,92,0.7,0.04],[213,893,0.6,105,1.6],[147,918,0.04,115,2.4]]}
+{"p":[[693,540,0.1,null,0.5],[698,546,1.1,null,0.4],[664,590,1,60,1.2],[582,639,0.6,80,1.8],[475,688,0.04,95,2.4]]}
+{"p":[[467,631,0.06,42,0.7],[549,721,0.8],[631,803,1.2,55,0.8],[697,852,1.5,70,0.6],[762,885,1.2,85,0.9],[877,926,0.04,90,1.8]]}`],
+  [['Exposed tip and stop (horizontal stroke)', '露鋒と止め（横画）'], EX('{"p":[[205,676,0.1,null,0.5],[211,681,1.16,null,0.4],[287,680,1],[680,647,1],[730,647,1.24,null,0.3,0.15],[726,643,0.8,null,0.4]]}')],
+  [['Hidden tip (horizontal stroke, entering backward)', '蔵鋒（逆筆で入る横画）'], EX('{"p":[[270,663,0.08,0,0.5],[238,666,0.3,null,0.35],[229,676,0.8,null,0.3],[254,677,1.3,null,0.4],[336,670,1.4],[541,657,1.4],[680,647,1.4]]}')],
+  [['Turn (horizontal into vertical)', '転折（横から縦へ）'], EX('{"p":[[262,524,0.1,null,0.5],[268,530,1.1,null,0.4],[336,532,0.9],[615,508,0.9,null,0.6],[656,504,1.44,null,0.3,0.14,"k"],[664,557,1.1,null,0.4],[664,639,1.16],[664,950,1.16,null,0.3,0.12],[660,946,0.06,null,0.4]]}')],
+  [['Hook (end of a vertical stroke)', 'はね（縦画の終わり）'], EX('{"p":[[492,393,0.1,null,0.5],[500,399,1.2,null,0.4],[508,606,1],[500,868,1],[492,893,1,70,0.3,0.12],[484,893,1,null,0.5],[418,852,0.4,null,5]]}')],
+  [['Long left sweep 掠', '掠（長い左払い）'], EX('{"p":[[594,393,0.1,null,0.5],[600,399,1.16,null,0.4],[590,458,1.1,50],[549,606,1.1,60,1],[467,754,1.1,75,1.1],[402,836,1.1,90,0.7,0.04],[320,901,0.7,105,1.6],[205,950,0.04,115,2.6]]}')],
+  [['Short left sweep 啄', '啄（短い左払い）'], EX('{"p":[[615,524,0.1,null,0.5],[621,530,1.16,null,0.4],[582,590,1,60,1.2],[516,655,0.6,80,1.8],[434,704,0.04,95,2.4]]}')],
+  [['Right sweep 磔', '磔（右払い）'], EX('{"p":[[254,409,0.06,42,0.7],[369,540,0.7],[549,737,1.2,55,0.8],[664,852,1.5,70,0.6],[746,909,1.2,85,0.9],[861,959,0.04,90,1.8]]}')],
+  [['Dew-drop ending 垂露', '垂露'], EX('{"p":[[492,393,0.1,null,0.5],[496,399,1.2,null,0.4],[498,475,1.12,42],[498,770,1.12,42],[502,901,1.4,65,0.5],[508,942,1.7,85,0.25,0.25],[507,938,0.7,null,0.3],[504,934,0.06,null,0.4]]}')],
+  [['Hanging-needle ending 懸針', '懸針'], EX('{"p":[[492,393,0.1,null,0.5],[496,399,1.2,null,0.4],[498,475,1.12,42],[498,770,1.12,42],[502,836,1.06,52,1.1],[511,901,0.88,70,1.4],[520,967,0.48,82,1.7],[521,1032,0.04,90,2]]}')],
+  [['Opening of 山 (two characters, vertical)', '「山」の書き出し（縦書き2字の例）'], `{"t":"brush","size":42}
+{"c":"山"}
+{"p":[[495,170,0.1,null,0.5],[499,174,1.2,null,0.4],[500,240,1.12],[500,560,1.12,null,0.3,0.12],[497,557,0.8,null,0.4]]}`],
+];
+
+// 「永」（PRESETS[0]）を prompt.md の手本から読み込む: {"c":"永"} の行と、その前の筆の宣言、続く画の行。
+// 読めなければ（file:// で開いたときなど）上の写しのまま
+async function importEi() {
+  try {
+    const lines = (await (await fetch('../prompt.md', { cache: 'no-store' })).text()).split(/\r?\n/).map((l) => l.trim());
+    let i = lines.findIndex((l) => l.startsWith('{"c":"永"}'));
+    if (i < 0) return;
+    if (i > 0 && lines[i - 1].startsWith('{"t":"brush"')) i--;
+    const out = [];
+    for (; i < lines.length && lines[i].startsWith('{'); i++) out.push(lines[i]);
+    PRESETS[0][1] = out.join('\n');
+  } catch (e) { /* 写しのまま */ }
+}
+
+// ---------- パラメータ ----------
+// live: その場で反映（再描画しない）
+const SPECS = [
+  { id: 'speed', g: 'play', label: ['Playback speed [speed]', '再生速度 [speed]'], min: 0.1, max: 5, step: 0.1, value: 1, live: true, fmt: (v) => v.toFixed(1) + '×' },
+  { id: 'cps', g: 'play', label: ['Stream input (characters/sec)', 'ストリーム入力（文字/秒）'], min: 0, max: 600, step: 10, value: 0, live: true, fmt: (v) => (v ? tr('cpsUnit', v) : tr('cpsAll')) },
+  { id: 'brushSize', g: 'brush', label: ['Brush size [brushSize]', '筆の太さ [brushSize]'], min: 0, max: 120, step: 1, value: 0, fmt: (v) => (v ? v : tr('asDeclared')) },
+  { id: 'angle', g: 'brush', label: ['Default angle (degrees) [angle]', '既定の角度（度） [angle]'], min: 0, max: 359, step: 1, value: 42, fmt: (v) => v + '°' },
+  { id: 'bristles', g: 'brush', label: ['Bristles at size 60 [bristles]', '毛の本数（太さ 60 のとき） [bristles]'], min: 20, max: 500, step: 10, value: 300, fmt: (v) => v },
+  { id: 'inkLoad', g: 'brush', label: ['Ink load [inkLoad]', '墨の量 [inkLoad]'], min: 0.1, max: 1.5, step: 0.05, value: 1, fmt: (v) => v.toFixed(2) },
+  { id: 'inkTone', g: 'brush', label: ['Ink tone [inkTone]', '墨の濃さ [inkTone]'], min: 0.1, max: 1, step: 0.05, value: 1, fmt: (v) => v.toFixed(2) + (v >= 0.95 ? tr('toneDark') : v <= 0.5 ? tr('tonePale') : '') },
+  { id: 'autoDipEvery', g: 'dip', label: ['Reload every N characters or strokes [autoDipEvery]', '何字・何画ごとに墨継ぎ [autoDipEvery]'], min: 1, max: 20, step: 1, value: 1, fmt: (v) => v },
+  { id: 'inkRate', g: 'brush', label: ['Ink use rate [inkRate]', '墨の減り方 [inkRate]'], min: 0, max: 4, step: 0.05, value: 1, fmt: (v) => v.toFixed(2) },
+  { id: 'mottle', g: 'brush', label: ['Dry-brush mottle depth [mottle]', 'かすれのムラの深さ [mottle]'], min: 0, max: 1, step: 0.05, value: 0.5, fmt: (v) => v.toFixed(2) + (v ? '' : tr('off')) },
+  { id: 'mottleSize', g: 'brush', label: ['Mottle size [mottleSize]', 'ムラの大きさ [mottleSize]'], min: 0.3, max: 3, step: 0.1, value: 1, fmt: (v) => v.toFixed(1) + '×' },
+  { id: 'mottleContrast', g: 'brush', label: ['Mottle contrast [mottleContrast]', 'ムラのメリハリ [mottleContrast]'], min: 1, max: 5, step: 0.1, value: 2.2, fmt: (v) => v.toFixed(1) },
+  { id: 'pMul', g: 'data', label: ['Pressure ×', '筆圧 ×'], min: 0.3, max: 1.8, step: 0.01, value: 1, fmt: (v) => v.toFixed(2) },
+  { id: 'vMul', g: 'data', label: ['Speed ×', '速さ ×'], min: 0.2, max: 4, step: 0.05, value: 1, fmt: (v) => v.toFixed(2) },
+  { id: 'dMul', g: 'data', label: ['Pause ×', '溜め ×'], min: 0, max: 4, step: 0.05, value: 1, fmt: (v) => v.toFixed(2) },
+  { id: 'aAdd', g: 'data', label: ['Angle +', '角度 ＋'], min: -60, max: 60, step: 1, value: 0, fmt: (v) => (v > 0 ? '+' : '') + v + '°' },
+  { id: 'width', g: 'paper', label: ['Paper width [width]', '紙の幅 [width]'], min: 200, max: 2000, step: 20, value: 1000, fmt: (v) => v },
+  { id: 'height', g: 'paper', label: ['Paper height [height]', '紙の高さ [height]'], min: 200, max: 2000, step: 8, value: 1376, fmt: (v) => v },
+  { id: 'pxPerUnit', g: 'view', label: ['Resolution [pxPerUnit]', '解像度 [pxPerUnit]'], min: 0.5, max: 3, step: 0.1, value: 1.0, fmt: (v) => v.toFixed(1) + ` (${Math.round(1000 * v)}px)` },
+];
+const P = {};
+const $ = (id) => document.getElementById(id);
+
+for (const s of SPECS) {
+  P[s.id] = s.value;
+  const box = document.createElement('div');
+  box.className = 'ctl';
+  box.innerHTML = `<div class="row"><span></span><span class="val"></span></div>
+    <input type="range" min="${s.min}" max="${s.max}" step="${s.step}" value="${s.value}">`;
+  const input = box.querySelector('input'), val = box.querySelector('.val');
+  const show = () => (val.textContent = s.fmt(P[s.id]));
+  const name = box.querySelector('.row span');
+  s.relabel = () => { name.textContent = pick(s.label); name.title = tr('resetTitle'); show(); };
+  s.set = (v) => { P[s.id] = v; input.value = v; show(); };
+  input.addEventListener('input', () => { P[s.id] = Number(input.value); show(); changed(s); });
+  box.querySelector('.row span').addEventListener('dblclick', () => { s.set(s.value); changed(s); });
+  s.relabel();
+  $('g-' + s.g).appendChild(box);
+}
+const showDipEvery = () => { $('g-dip').hidden = !['char', 'stroke'].includes($('autoDip').value); };
+$('autoDip').addEventListener('change', () => { showDipEvery(); changed({}); });
+for (const id of ['showPts', 'showAll']) $(id).addEventListener('change', drawOverlay);
+$('paperKind').addEventListener('change', () => { $('paperColor').disabled = $('paperKind').value !== 'plain'; changed({}); });
+$('paperColor').addEventListener('input', () => changed({}));
+$('bleed').addEventListener('change', () => changed({}));
+$('reset').addEventListener('click', () => {
+  SPECS.forEach((s) => s.set(s.value));
+  $('autoDip').value = 'char'; showDipEvery();
+  $('bleed').value = 'capillary';
+  $('paperKind').value = 'image'; $('paperColor').value = '#f2ebdc'; $('paperColor').disabled = true;
+  changed({});
+});
+$('sign').addEventListener('input', () => changed({}));
+
+function changed(s) {
+  if (s.id === 'speed') { if (engine && !paused) engine.opts.speed = P.speed; return; }
+  if (s.live) return;
+  // 筆・墨・データの変更は即時描画でやり直す（入力が続く間はまとめる）
+  clearTimeout(changed.t);
+  changed.t = setTimeout(renderInstant, 120);
+}
+
+// ---------- データ ----------
+let warnings = [];
+function parseSource() {
+  warnings = [];
+  const text = $('src').value.trim();
+  if (text[0] === '[') {
+    try { return JSON.parse(text); } catch (e) { warnings.push(['badArray', e.message]); return []; }
+  }
+  const out = [];
+  const sp = new Sho.StreamParser((c) => (Array.isArray(c) ? out.push(...c) : out.push(c)), (t) => warnings.push(['badLine', t]));
+  sp.feed(text + '\n');
+  return out;
+}
+
+// [x, y, 筆圧, 角度, 速さ, 溜め] の数値スロットに補正を掛ける（null・省略・"k" はそのまま）
+function transformPoint(q) {
+  const f = (slot, v) => slot === 2 ? v * P.pMul : slot === 3 ? v + P.aAdd : slot === 4 ? v * P.vMul : slot === 5 ? v * P.dMul : v;
+  if (Array.isArray(q)) {
+    let slot = 0;
+    return q.map((v) => (typeof v === 'number' || v === null ? (v === null ? (slot++, v) : f(slot++, v)) : v));
+  }
+  const o = { ...q };
+  if (typeof o.p === 'number') o.p = f(2, o.p);
+  if (typeof o.a === 'number') o.a = f(3, o.a);
+  if (typeof o.v === 'number') o.v = f(4, o.v);
+  if (typeof o.d === 'number') o.d = f(5, o.d);
+  return o;
+}
+function transform(cmd) {
+  if (!cmd || typeof cmd !== 'object') return cmd;
+  const c = { ...cmd };
+  if (c.t === 'brush' && P.brushSize > 0) c.size = P.brushSize;
+  if (Array.isArray(c.p)) c.p = c.p.map(transformPoint);
+  return c;
+}
+const isStroke = (c) => c && !c.t && Array.isArray(c.p);
+
+// ---------- エンジン ----------
+const canvas = $('paper');
+let engine = null, cmds = [], index = new Map(), cur = -1;
+let mode = 'idle', paused = false, stepPtr = 0, stream = null;
+
+// ---------- 音（合成＋ポップ固定） ----------
+// 筆が紙をこする控えめな合成音（筆の速さ・筆圧・かすれで変わる）に、書き始めの「ぽわっ」と署名のファンファーレ（ランダム）を加える
+const SYN = { vol: 0.11, bright: 880, brightMove: 4090, brightDry: 130, q: 1.3, qSoft: 0.1, body: 0.12, grit: 0, gritDry: 0.13 };
+let actx = null, synth = null, syn = null;
+try {
+  actx = new (window.AudioContext || window.webkitAudioContext)();
+  // 最初の操作で音を出せるようにする（ブラウザの自動再生の制限）
+  document.addEventListener('pointerdown', () => { if (actx.state === 'suspended' && !paused) actx.resume(); });
+} catch (e) { actx = null; }
+const soundOn = () => actx && $('sound').checked;
+
+function makeSynth() {
+  const sr = actx.sampleRate, len = sr * 2;
+  const noise = actx.createBuffer(1, len, sr), d = noise.getChannelData(0);
+  // ピンクノイズ（Paul Kellet の近似）
+  let b0 = 0, b1 = 0, b2 = 0;
+  for (let i = 0; i < len; i++) {
+    const w = Math.random() * 2 - 1;
+    b0 = 0.99765 * b0 + w * 0.099046; b1 = 0.963 * b1 + w * 0.2965164; b2 = 0.57 * b2 + w * 1.0526913;
+    d[i] = (b0 + b1 + b2 + w * 0.1848) * 0.2;
+  }
+  const src = actx.createBufferSource(); src.buffer = noise; src.loop = true;
+  const filt = (type, f, q) => { const n = actx.createBiquadFilter(); n.type = type; n.frequency.value = f; if (q != null) n.Q.value = q; return n; };
+  const gain = (v) => { const g = actx.createGain(); g.gain.value = v; return g; };
+  const hp = filt('highpass', 250), bp = filt('bandpass', 1500, 0.7), tex = gain(1);   // 毛が紙をこする音
+  const lp = filt('lowpass', 320), body = gain(0);                                    // 腹が紙を押す低い音
+  const master = gain(0);
+  const pan = actx.createStereoPanner ? actx.createStereoPanner() : null;
+  src.connect(hp).connect(bp).connect(tex).connect(master);
+  src.connect(lp).connect(body).connect(master);
+  if (pan) master.connect(pan).connect(actx.destination); else master.connect(actx.destination);
+  src.start();
+  return { bp, tex, body, master, pan };
+}
+
+// 音程がすっと動く短い音（f0 → f1 Hz、dur 秒）
+function blip(type, f0, f1, dur, vol, at, dest, atk = 0.006) {
+  if (!soundOn() || actx.state !== 'running') return;
+  const t = at != null ? at : actx.currentTime;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(f0, t);
+  o.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.8);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(vol, t + atk);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g).connect(dest || actx.destination);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+
+// 署名のファンファーレ: [高さ（Hz）, 鳴り始め（秒）, 長さ（秒）, 終わりの音程の倍率, 音量]。毎回ランダム（直前と同じものは避ける）
+const N = { C5: 523.25, D5: 587.33, E5: 659.25, G5: 783.99, A5: 880, C6: 1046.5, D6: 1174.66, E6: 1318.51, G6: 1567.98 };
+const FANFARES = [
+  [[N.C5, 0, 0.14, 1.01, 0.22], [N.E5, 0.11, 0.14, 1.01, 0.22], [N.G5, 0.22, 0.14, 1.01, 0.22], [N.C6, 0.33, 0.5, 1.5, 0.22]],
+  [[N.G5, 0, 0.07, 1, 0.2], [N.G5, 0.09, 0.07, 1, 0.2], [N.G5, 0.18, 0.07, 1, 0.2],
+    [N.C6, 0.28, 0.6, 1.01, 0.18], [N.E6, 0.28, 0.6, 1.01, 0.12], [N.G6, 0.28, 0.6, 1.01, 0.09]],
+  [[N.C5, 0, 0.8, 1.005, 0.13], [N.E5, 0, 0.8, 1.005, 0.12], [N.G5, 0, 0.8, 1.005, 0.11], [N.C6, 0, 0.8, 1.005, 0.1]],
+  [[N.C5, 0, 0.1, 1, 0.16], [N.D5, 0.05, 0.1, 1, 0.16], [N.E5, 0.1, 0.1, 1, 0.16], [N.G5, 0.15, 0.1, 1, 0.16],
+    [N.A5, 0.2, 0.1, 1, 0.16], [N.C6, 0.25, 0.1, 1, 0.16], [N.D6, 0.3, 0.1, 1, 0.15], [N.E6, 0.35, 0.1, 1, 0.14], [N.G6, 0.4, 0.45, 1.02, 0.14]],
+  [[N.G5, 0, 0.12, 1, 0.22], [N.C6, 0.15, 0.6, 1.02, 0.22]],
+  [[N.E5, 0, 0.1, 1, 0.2], [N.D5, 0.1, 0.1, 1, 0.2], [N.C5, 0.2, 0.12, 1, 0.2], [N.C6, 0.34, 0.5, 1.5, 0.2]],
+];
+let fanfareLast = -1;
+function fanfare() {
+  if (!soundOn() || actx.state !== 'running') return;
+  let i;
+  do i = Math.floor(Math.random() * FANFARES.length); while (i === fanfareLast);
+  fanfareLast = i;
+  const t = actx.currentTime;
+  for (const [f, at, dur, slide, vol] of FANFARES[i]) blip('triangle', f, f * slide, dur, vol, t + at);
+}
+
+// 書き始めの「ぽわっ」を、入りの筆圧（画の最初の 2 割でいちばん強い筆圧）と筆の太さで変える（筆圧 0.5 前後・太さ 40 で
+// 220 → 660 Hz、0.16 秒、音量 0.24）。強く押し込むほど・太い筆ほど低く・大きく・長く、そっと置くほど・細い筆ほど高く・小さく・短く
+function popIn(job, t) {
+  let p = 0;
+  for (let i = 0, end = Math.max(1, Math.ceil(job.n * 0.2)); i < end; i++) p = Math.max(p, job.p[i]);
+  p = Math.min(1.2, p);
+  const r = Math.min(3, Math.max(0.2, job.R / engine.opts.pxPerUnit / 40)); // 太さは px から紙の座標に直す
+  const pitch = Math.min(2.5, Math.max(0.4, Math.pow(2, (0.5 - p) * 1.2) * Math.pow(r, -0.4)));
+  blip('sine', 220 * pitch, 660 * pitch, (0.12 + 0.08 * p) * Math.pow(r, 0.25), 0.24 * (0.6 + 0.8 * p) * Math.pow(r, 0.15), t, synth.pan);
+}
+
+// 毎フレーム、今描いている画の穂先の速さ・筆圧・かすれを読んで合成音を変える
+function synthTick(job, now) {
+  if (!actx) return;
+  if (!synth) { if (!job) return; synth = makeSynth(); }
+  const t = actx.currentTime;
+  if (!job || paused) { synth.master.gain.setTargetAtTime(0, t, paused ? 0.01 : 0.04); if (!job) syn = null; return; }
+  const k = Math.min(engine.jobK || 0, job.n - 1);
+  if (!syn || syn.job !== job) {
+    syn = { job, k, at: now, s: 0 };
+    // 書き始め「ぽわっ」（筆の左右の位置で）
+    if (synth.pan) synth.pan.pan.setValueAtTime(Math.max(-1, Math.min(1, (job.x[k] / engine.W - 0.5) * 0.8)), t);
+    popIn(job, t);
+  }
+  // 穂先の実際の速さ（画面上の動き）を、速さ 1 のときを 1 として測る
+  const dt = (now - syn.at) / 1000;
+  if (dt > 0) {
+    const inst = Math.hypot(job.x[k] - job.x[syn.k], job.y[k] - job.y[syn.k]) / dt / (job.unit * 140);
+    syn.s += (inst - syn.s) * (inst > syn.s ? 0.5 : 0.25);
+  }
+  syn.k = k; syn.at = now;
+  const p = Math.min(1, job.p[k]), move = Math.min(1.5, syn.s);
+  const dry = Math.min(1, Math.max(0, (job.sv[k] - 1.2) / 2.5)); // 速く書く所ほどかすれる
+  const loud = Math.pow(p, 0.6) * (0.04 + 0.96 * Math.min(1, move / 0.8));
+  synth.master.gain.setTargetAtTime(soundOn() ? SYN.vol * loud : 0, t, 0.03);
+  synth.bp.frequency.setTargetAtTime(SYN.bright + SYN.brightMove * Math.min(1.3, move) + SYN.brightDry * dry, t, 0.04);
+  synth.bp.Q.setTargetAtTime(SYN.q + SYN.qSoft * (1 - p), t, 0.05);
+  synth.body.gain.setTargetAtTime(SYN.body * p * Math.min(1, move), t, 0.05);
+  synth.tex.gain.setTargetAtTime(Math.max(0, 1 - SYN.grit * Math.random() - dry * SYN.gritDry * Math.random()), t, 0.006);
+  if (synth.pan) synth.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, (job.x[k] / engine.W - 0.5) * 0.8)), t, 0.05);
+}
+(function soundTick(now) {
+  synthTick(engine && !engine.opts.instant ? engine.job : null, now || performance.now());
+  requestAnimationFrame(soundTick);
+})();
+
+// 紙の縦横比に合わせて、表示領域に収まる大きさを決める。制御点の層の解像度（紙の 2 倍）も合わせる
+let stageW = 1000, stageH = 1376;
+function fitStage(w = stageW, h = stageH) {
+  stageW = w; stageH = h;
+  const main = document.querySelector('main'), narrow = matchMedia('(max-width: 1100px)').matches;
+  const k = Math.min((main.clientWidth - 32) / w, narrow ? 560 / w : (main.clientHeight - 32) / h);
+  const stage = document.querySelector('.stage');
+  stage.style.width = w * k + 'px'; stage.style.height = h * k + 'px';
+  const ov = $('overlay');
+  if (ov.width !== w * 2 || ov.height !== h * 2) { ov.width = w * 2; ov.height = h * 2; }
+}
+addEventListener('resize', () => fitStage());
+
+// 描き始めるたびに呼ぶ。解像度・毛の本数・紙の種類が前と同じなら、エンジンを作り直さずに設定を入れ替えて紙を消す
+function makeEngine(instant) {
+  stopStream();
+  $('workComment').hidden = true;
+  paused = false; showPause();
+  const opts = {
+    angle: P.angle, inkLoad: P.inkLoad, inkTone: P.inkTone, inkRate: P.inkRate,
+    speed: P.speed, autoDip: $('autoDip').value === 'false' ? false : $('autoDip').value, autoDipEvery: P.autoDipEvery, brushSize: P.brushSize || 40, instant,
+    mottle: P.mottle, mottleSize: P.mottleSize, mottleContrast: P.mottleContrast,
+    paperColor: $('paperColor').value, width: P.width, height: P.height, bleed: $('bleed').value,
+  };
+  const paper = $('paperKind').value === 'plain' ? null : 'paper.webp';
+  if (engine && engine.opts.pxPerUnit === P.pxPerUnit && engine.opts.bristles === P.bristles && engine.opts.paper === paper) {
+    Object.assign(engine.opts, opts);
+    engine.clear();
+    if (engine.paper.w !== P.width || engine.paper.h !== P.height) engine.setPaper(P.width, P.height);
+  } else {
+    if (engine) engine.destroy();
+    engine = new Sho.Engine(canvas, Object.assign({ pxPerUnit: P.pxPerUnit, bristles: P.bristles, paper }, opts));
+    engine.on('command', (c) => {
+      // {"comment":"…"}: 作品のひとこと（描画はしない。順番が来たら表示する）
+      if (c && c.comment != null) { $('workComment').textContent = String(c.comment); $('workComment').hidden = false; }
+      if (!engine.opts.instant && c.t === 'sign') fanfare();
+      if (index.has(c)) { cur = index.get(c); drawOverlay(); }
+    });
+    engine.on('idle', () => { if (mode === 'playing' && !stream) finish(); if (mode === 'stepping') setMode(stepPtr >= cmds.length ? 'mStepDone' : 'mStepWait'); });
+  }
+  cur = -1;
+  fitStage(P.width, P.height);
+  return engine;
+}
+
+// 署名: 書き終えたあと紙の左下に入れる（sho.js の {"t":"sign"}）
+const signCmd = () => { const t = $('sign').value.trim(); return t ? { t: 'sign', text: t, dir: 'v' } : null; };
+
+function load(list) {
+  cmds = list.map(transform);
+  const s = signCmd();
+  if (s) cmds.push(s);
+  index = new Map(cmds.map((c, i) => [c, i]));
+  showWarnings();
+}
+
+function renderInstant() {
+  const list = parseSource();
+  makeEngine(true);
+  load(list);
+  const t = performance.now();
+  cmds.forEach((c) => engine.enqueue(c));
+  cur = cmds.length;
+  mode = 'done';
+  setMode('mInstant', (performance.now() - t).toFixed(0));
+  drawOverlay();
+}
+
+function play() {
+  const list = parseSource();
+  makeEngine(false);
+  mode = 'playing';
+  setMode('mPlaying');
+  if (P.cps > 0) {
+    cmds = []; index = new Map(); showWarnings();
+    startStream($('src').value);
+  } else {
+    load(list);
+    cmds.forEach((c) => engine.enqueue(c));
+  }
+  drawOverlay();
+}
+
+// LLM の出力のように文字単位でテキストを流し込む（届いた行から順にエンジンへ送る）
+function addLive(c) { index.set(c, cmds.length); cmds.push(c); engine.enqueue(c); }
+function startStream(text) {
+  const parser = new Sho.StreamParser((raw) => {
+    for (const r of Array.isArray(raw) ? raw : [raw]) addLive(transform(r));
+    showWarnings();
+  }, (t) => warn(['badLine', t]));
+  let pos = 0, last = performance.now(), carry = 0;
+  const timer = setInterval(() => {
+    const now = performance.now(), dt = (now - last) / 1000; last = now;
+    if (paused) return;
+    carry += dt * P.cps;
+    const n = Math.floor(carry); carry -= n;
+    if (n > 0) { parser.feed(text.slice(pos, pos + n)); pos += n; }
+    if (pos >= text.length) {
+      parser.end(); clearInterval(timer);
+      const s = signCmd(); if (s) addLive(s);
+      stream = null; if (!engine.busy) finish();
+    }
+  }, 30);
+  stream = { stop: () => clearInterval(timer) };
+}
+function stopStream() { if (stream) { stream.stop(); stream = null; } }
+
+function finish() {
+  mode = 'done'; cur = cmds.length;
+  setMode('mDone'); drawOverlay();
+}
+
+function togglePause() {
+  if (!engine || mode !== 'playing' && mode !== 'stepping') return;
+  paused = !paused;
+  // speed 0 で時間が進まない＝一時停止
+  engine.opts.speed = paused ? 0 : P.speed;
+  showPause();
+  setMode(paused ? 'mPaused' : mode === 'playing' ? 'mPlaying' : 'mStep');
+}
+
+function step() {
+  if (mode !== 'stepping') {
+    const list = parseSource();
+    makeEngine(false);
+    load(list);
+    mode = 'stepping'; stepPtr = 0;
+  }
+  if (stepPtr >= cmds.length) { setMode('mStepDone'); return; }
+  // 次の画まで（その前の筆・文字宣言も含めて）を送る
+  while (stepPtr < cmds.length) {
+    const c = cmds[stepPtr++];
+    engine.enqueue(c);
+    if (isStroke(c)) break;
+  }
+  setMode('mStep');
+}
+
+$('play').addEventListener('click', play);
+$('pause').addEventListener('click', togglePause);
+$('step').addEventListener('click', step);
+$('instant').addEventListener('click', renderInstant);
+$('clearPaper').addEventListener('click', () => {
+  makeEngine(false);
+  cmds = []; index = new Map(); cur = -1;
+  mode = 'idle'; setMode('mCleared');
+  drawOverlay();
+});
+$('png').addEventListener('click', () => {
+  if (!engine) return;
+  const a = document.createElement('a');
+  a.href = engine.toDataURL(); a.download = 'sho.png'; a.click();
+});
+$('src').addEventListener('input', () => { clearTimeout(changed.t); changed.t = setTimeout(renderInstant, 400); });
+
+// ---------- 表示 ----------
+let modeMsg = null; // 言語を切り替えたときに出し直す
+function setMode(...msg) { modeMsg = msg; $('mode').textContent = tr(...msg); }
+function showPause() { $('pause').textContent = tr(paused ? 'resume' : 'pause'); }
+function warn(s) { warnings.push(s); showWarnings(); }
+function showWarnings() {
+  const m = $('msg');
+  const strokes = cmds.filter(isStroke).length;
+  m.className = 'msg' + (warnings.length ? ' err' : '');
+  const texts = warnings.map((w) => tr(...w));
+  m.textContent = tr('count', cmds.length, strokes) + (warnings.length ? tr('problems', warnings.length, texts[0]) : '');
+  m.title = texts.join('\n');
+}
+
+function brushFor(i) {
+  for (let j = Math.min(i, cmds.length - 1); j >= 0; j--) if (cmds[j] && cmds[j].t === 'brush' && cmds[j].size > 0) return cmds[j].size;
+  return P.brushSize || 40;
+}
+
+// 制御点のオーバーレイ（紙の座標 1000×1376 を 2 倍で描く）
+const ov = $('overlay'), og = ov.getContext('2d');
+function strokePoints(c) {
+  let ang = P.angle;
+  return c.p.map((q) => {
+    let x, y, p, a, d, k;
+    if (Array.isArray(q)) {
+      const nums = q.filter((v) => typeof v === 'number' || v === null);
+      [x, y, p, a, , d] = nums;
+      k = q.some((v) => v === 'k' || v === 'K' || v === true);
+    } else ({ x, y, p, a, d, k } = q);
+    if (typeof a === 'number') ang = a;
+    return { x, y, p: typeof p === 'number' ? p : null, a: ang, d: d || 0, k };
+  });
+}
+function drawOverlay() {
+  og.setTransform(1, 0, 0, 1, 0, 0);
+  og.clearRect(0, 0, ov.width, ov.height);
+  og.setTransform(2, 0, 0, 2, 0, 0);
+  if (!$('showPts').checked) return;
+  const showAll = $('showAll').checked;
+  cmds.forEach((c, i) => {
+    if (!isStroke(c)) return;
+    const active = i === cur;
+    if (!active && !showAll) return;
+    const pts = strokePoints(c), bs = brushFor(i);
+    const col = active ? '200,85,61' : '40,90,170';
+    const alpha = active ? 1 : 0.55;
+    og.strokeStyle = `rgba(${col},${0.5 * alpha})`; og.lineWidth = 1;
+    og.beginPath(); pts.forEach((q, j) => (j ? og.lineTo(q.x, q.y) : og.moveTo(q.x, q.y))); og.stroke();
+    pts.forEach((q, j) => {
+      // 腹の向きと長さ（筆圧 × 筆の太さ）
+      if (q.p != null) {
+        const r = q.a * Math.PI / 180, L = q.p * bs;
+        og.strokeStyle = `rgba(${col},${0.6 * alpha})`; og.lineWidth = 2;
+        og.beginPath(); og.moveTo(q.x, q.y); og.lineTo(q.x + Math.cos(r) * L, q.y + Math.sin(r) * L); og.stroke();
+      }
+      og.fillStyle = `rgba(${col},${alpha})`;
+      if (q.k) og.fillRect(q.x - 4.5, q.y - 4.5, 9, 9);
+      else { og.beginPath(); og.arc(q.x, q.y, 3.5, 0, Math.PI * 2); og.fill(); }
+      if (q.d > 0) { og.strokeStyle = `rgba(${col},${alpha})`; og.lineWidth = 1.5; og.beginPath(); og.arc(q.x, q.y, 7 + q.d * 40, 0, Math.PI * 2); og.stroke(); }
+      og.font = '600 13px system-ui'; og.fillStyle = `rgba(${col},${alpha})`;
+      og.fillText(String(j), q.x + 7, q.y - 6);
+    });
+  });
+}
+
+// ---------- 起動 ----------
+const sel = $('preset');
+PRESETS.forEach(([name], i) => sel.add(new Option(pick(name), i)));
+
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.title = lang === 'ja' ? 'sho.js デモ' : 'sho.js demo';
+  document.querySelectorAll('[data-t]').forEach((el) => (el.textContent = tr(el.dataset.t)));
+  for (const s of SPECS) s.relabel();
+  PRESETS.forEach(([name], i) => (sel.options[i].text = pick(name)));
+  $('workComment').dataset.label = tr('comment');
+  showPause();
+  if (modeMsg) setMode(...modeMsg);
+  showWarnings();
+  for (const l of ['en', 'ja']) $('lang-' + l).setAttribute('aria-pressed', l === lang);
+}
+for (const l of ['en', 'ja']) $('lang-' + l).addEventListener('click', () => {
+  lang = l;
+  try { localStorage.setItem('sho-demo-lang', l); } catch (e) { /* 残せなくても切り替えは効く */ }
+  applyLang();
+});
+applyLang();
+sel.addEventListener('change', () => { $('src').value = PRESETS[Number(sel.value)][1]; play(); });
+// 最初に描く「永」は prompt.md の手本を読み込む
+Promise.all([Sho.ready, importEi()]).then(() => { $('src').value = PRESETS[0][1]; play(); });
+</script>
+</html>
